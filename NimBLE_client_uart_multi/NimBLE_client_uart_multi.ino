@@ -57,20 +57,20 @@
 #define DEBUG_begin(x) Serial.begin(x)
 #define DEBUG_print(x) Serial.print(x)
 #define DEBUG_println(x) Serial.println(x)
+#define DEBUG_wait while(!Serial)yield()
 #else
 #define DEBUG_begin(x)
 #define DEBUG_print(x)
 #define DEBUG_println(x)
+#define DEBUG_wait
 #endif
 
 // The remote Nordic UART service service we wish to connect to.
 // This service exposes two characteristics: one for transmitting and one for receiving (as seen from the client).
 static BLEUUID serviceUUID("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
-
 // The characteristics of the above service we are interested in.
 // The client can send data to the server by writing to this characteristic.
 static BLEUUID charUUID_RX("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");   // RX Characteristic
-
 // If the client has enabled notifications for this characteristic,
 // the server can send data to the client as notifications.
 static BLEUUID charUUID_TX("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");   // TX Characteristic
@@ -84,6 +84,9 @@ typedef struct
   BLERemoteCharacteristic* pTXCharacteristic;
   BLERemoteCharacteristic* pRXCharacteristic;
   bool NotifyState = true;
+  int index = 0;
+  String name;
+  int rssi;
 } server;
 static server Server[MAX_SERVER];
 
@@ -91,8 +94,9 @@ const uint8_t notificationOff[] = {0x0, 0x0};
 const uint8_t notificationOn[] = {0x1, 0x0};
 
 
-static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {
-  DEBUG_println("Notify callback for TX characteristic received. Data:");
+static void notifyCallback_0(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {
+  //DEBUG_println("Notify callback for TX characteristic received. Data:");
+  DEBUG_print((Server[0].name + ":").c_str());
   for (int i = 0; i < length; i++) {
     DEBUG_print((char)pData[i]);     // Print character to uart
     //DEBUG_print(pData[i]);           // print raw data to uart
@@ -100,6 +104,20 @@ static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic, ui
   }
   DEBUG_println();
 }
+static void notifyCallback_1(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {
+  //DEBUG_println("Notify callback for TX characteristic received. Data:");
+  DEBUG_print((Server[1].name + ":").c_str());
+  for (int i = 0; i < length; i++) {
+    DEBUG_print((char)pData[i]);     // Print character to uart
+    //DEBUG_print(pData[i]);           // print raw data to uart
+    //DEBUG_print(" ");
+  }
+  DEBUG_println();
+}
+void (* const notifyCallbackArray[])(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) = {
+  notifyCallback_0,
+  notifyCallback_1,
+};
 
 bool connectToServer(server *peripheral) {
   DEBUG_print("Establishing a connection to device address: ");
@@ -135,7 +153,7 @@ bool connectToServer(server *peripheral) {
   DEBUG_print("The characteristic value is currently: ");
   DEBUG_println(value.c_str());
 
-  peripheral->pTXCharacteristic->registerForNotify(notifyCallback);//DEBUG default valid
+  peripheral->pTXCharacteristic->registerForNotify(notifyCallbackArray[peripheral->index]);//DEBUG default valid
 
   //RXchar
   // Obtain a reference to the RX characteristic of the Nordic UART service on the remote BLE server.
@@ -175,6 +193,9 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
             //advertisedDevice->getScan()->stop();
             Server[i].pServerAddress = new BLEAddress(advertisedDevice->getAddress());
             Server[i].doConnect = true;
+            Server[i].index = i;
+            Server[i].name = advertisedDevice->getName().c_str();
+            Server[i].rssi = advertisedDevice->getRSSI();
             return;
           }
         }
@@ -185,9 +206,8 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 
 void setup() {
   DEBUG_begin(115200);
-  while (!Serial) {
-    yield();
-  }
+  DEBUG_wait;
+
   DEBUG_println("Starting Arduino BLE Central Mode (Client) Nordic UART Service");
 
   BLEDevice::init("");
