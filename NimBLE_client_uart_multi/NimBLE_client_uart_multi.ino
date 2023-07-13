@@ -101,15 +101,15 @@ static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic, ui
   DEBUG_println();
 }
 
-bool connectToServer(BLEAddress pAddress) {
+bool connectToServer(server *peripheral) {
   DEBUG_print("Establishing a connection to device address: ");
-  DEBUG_println(pAddress.toString().c_str());
+  DEBUG_println((*peripheral->pServerAddress).toString().c_str());
 
   BLEClient*  pClient  = BLEDevice::createClient();
   DEBUG_println(" - Created client");
 
   // Connect to the remove BLE Server.
-  pClient->connect(pAddress);
+  pClient->connect(*peripheral->pServerAddress);
   DEBUG_println(" - Connected to server");
 
   // Obtain a reference to the Nordic UART service on the remote BLE server.
@@ -122,8 +122,8 @@ bool connectToServer(BLEAddress pAddress) {
   DEBUG_println(" - Remote BLE service reference established");
 
   // Obtain a reference to the TX characteristic of the Nordic UART service on the remote BLE server.
-  Server[0].pTXCharacteristic = pRemoteService->getCharacteristic(charUUID_TX);
-  if (Server[0].pTXCharacteristic == nullptr) {
+  peripheral->pTXCharacteristic = pRemoteService->getCharacteristic(charUUID_TX);
+  if (peripheral->pTXCharacteristic == nullptr) {
     DEBUG_print("Failed to find TX characteristic UUID: ");
     DEBUG_println(charUUID_TX.toString().c_str());
     return false;
@@ -131,16 +131,16 @@ bool connectToServer(BLEAddress pAddress) {
   DEBUG_println(" - Remote BLE TX characteristic reference established");
 
   // Read the value of the TX characteristic.
-  std::string value = Server[0].pTXCharacteristic->readValue();
+  std::string value = peripheral->pTXCharacteristic->readValue();
   DEBUG_print("The characteristic value is currently: ");
   DEBUG_println(value.c_str());
 
-  Server[0].pTXCharacteristic->registerForNotify(notifyCallback);//DEBUG default valid
+  peripheral->pTXCharacteristic->registerForNotify(notifyCallback);//DEBUG default valid
 
   //RXchar
   // Obtain a reference to the RX characteristic of the Nordic UART service on the remote BLE server.
-  Server[0].pRXCharacteristic = pRemoteService->getCharacteristic(charUUID_RX);
-  if (Server[0].pRXCharacteristic == nullptr) {
+  peripheral->pRXCharacteristic = pRemoteService->getCharacteristic(charUUID_RX);
+  if (peripheral->pRXCharacteristic == nullptr) {
     DEBUG_print("Failed to find our characteristic UUID: ");
     DEBUG_println(charUUID_RX.toString().c_str());
     return false;
@@ -149,7 +149,7 @@ bool connectToServer(BLEAddress pAddress) {
 
   // Write to the the RX characteristic.
   //String helloValue = "Hello Remote Server";
-  //Server[0].pRXCharacteristic->writeValue(helloValue.c_str(), helloValue.length());
+  //peripheral->pRXCharacteristic->writeValue(helloValue.c_str(), helloValue.length());
 
   return true;
 }
@@ -207,7 +207,7 @@ void loop() {
   // BLE Server with which we wish to connect.  Now we connect to it.  Once we are
   // Server[0].connected we set the Server[0].connected flag to be true.
   if (Server[0].doConnect == true) {
-    if (connectToServer(*Server[0].pServerAddress)) {
+    if (connectToServer(&Server[0])) {
       DEBUG_println("We are now connected to the BLE Server.");
       Server[0].connected = true;
       //Server[0].pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
@@ -227,7 +227,7 @@ void loop() {
   }
 
   if (Server[1].doConnect == true) {
-    if (connectToServer(*Server[1].pServerAddress)) {
+    if (connectToServer(&Server[1])) {
       DEBUG_println("We are now connected to the BLE Server.");
       Server[1].connected = true;
       //Server[1].pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
