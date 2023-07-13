@@ -49,7 +49,7 @@
    Nordic UART Service info:
    https://infocenter.nordicsemi.com/index.jsp?topic=%2Fcom.nordic.infocenter.sdk5.v14.0.0%2Fble_sdk_app_nus_eval.html
 */
-
+#include "StringSplitter.h"
 #include <NimBLEDevice.h>
 #define DEBUG
 
@@ -65,6 +65,24 @@
 #define DEBUG_wait
 #endif
 
+union PACKET
+{
+  struct {
+    bool AirMeterIsOpen = 0;  //1byte
+    float AirSpeed;      //4byte
+    float AirMeterBat;   //4byte
+    bool PowerMeterIsOpen = 0; //1byte
+    uint16_t Cadence;    //2byte
+    uint16_t PowerAvg;   //2byte
+    uint16_t PowerMax;   //2byte
+    float PowerMeterBat; //4byte
+  };
+  uint8_t bin[20];
+};
+static PACKET packet;
+
+static String DisplayPacket;
+
 // The remote Nordic UART service service we wish to connect to.
 // This service exposes two characteristics: one for transmitting and one for receiving (as seen from the client).
 static BLEUUID serviceUUID("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
@@ -75,7 +93,7 @@ static BLEUUID charUUID_RX("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");   // RX Char
 // the server can send data to the client as notifications.
 static BLEUUID charUUID_TX("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");   // TX Characteristic
 
-#define MAX_SERVER 2
+#define MAX_SERVER 3
 typedef struct
 {
   BLEAddress *pServerAddress;
@@ -93,30 +111,94 @@ static server Server[MAX_SERVER];
 const uint8_t notificationOff[] = {0x0, 0x0};
 const uint8_t notificationOn[] = {0x1, 0x0};
 
+static void BuildPacket(String PrphName, String str, int index)
+{
+  //DEBUG_print(str.c_str());
+  String AIR = "AirMeter";
+  String PWR = "PowerMeter";
+  //String DPY = "Display";
+  if (PrphName == AIR)
+  {
+    packet.AirMeterIsOpen = 1;
+    StringSplitter *AirData = new StringSplitter(str, ' ', 2);
+    packet.AirSpeed = AirData->getItemAtIndex(0).toFloat();
+    packet.AirMeterBat = AirData->getItemAtIndex(1).toFloat();
+  }
+  else if (PrphName == PWR)
+  {
+    packet.PowerMeterIsOpen = 1;
+    StringSplitter *PowerData = new StringSplitter(str, ' ', 4);
+    packet.Cadence = PowerData->getItemAtIndex(0).toInt();
+    packet.PowerAvg = PowerData->getItemAtIndex(1).toInt();
+    packet.PowerMax = PowerData->getItemAtIndex(2).toInt();
+    packet.PowerMeterBat = PowerData->getItemAtIndex(3).toFloat();
+  }
+  /*else if (PrphName == DPY)//Readyメッセージが届いたら、送り返す
+    {
+    String tmp = String(packet.Cadence);
+    tmp += " ";
+    tmp += String(packet.PowerAvg);
+    tmp += " ";
+    tmp += String(int(packet.PowerMeterBat * 100.0));
+    tmp += " ";
+    tmp += String(int(packet.AirSpeed * 100.0));
+    tmp += " ";
+    tmp += String(int(packet.AirMeterBat * 100.0));
+    tmp += ",";
+    DisplayPacket = tmp;
+    Server[index].pRXCharacteristic->writeValue(DisplayPacket.c_str(), DisplayPacket.length());
+    DEBUG_println("Send to Display");
+    }*/
+  else
+  {
+    DEBUG_println("Unknown device detected");
+  }
+}
+
 
 static void notifyCallback_0(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {
-  //DEBUG_println("Notify callback for TX characteristic received. Data:");
-  DEBUG_print((Server[0].name + ":").c_str());
+  String ServerName = Server[0].name;
+  DEBUG_print((ServerName + ":").c_str());
+  String tmp = "";
   for (int i = 0; i < length; i++) {
     DEBUG_print((char)pData[i]);     // Print character to uart
     //DEBUG_print(pData[i]);           // print raw data to uart
     //DEBUG_print(" ");
+    tmp += (char)pData[i];
   }
+  BuildPacket(ServerName, tmp, 0);
   DEBUG_println();
 }
 static void notifyCallback_1(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {
-  //DEBUG_println("Notify callback for TX characteristic received. Data:");
-  DEBUG_print((Server[1].name + ":").c_str());
+  String ServerName = Server[1].name;
+  DEBUG_print((ServerName + ":").c_str());
+  String tmp = "";
   for (int i = 0; i < length; i++) {
     DEBUG_print((char)pData[i]);     // Print character to uart
     //DEBUG_print(pData[i]);           // print raw data to uart
     //DEBUG_print(" ");
+    tmp += (char)pData[i];
   }
+  BuildPacket(ServerName, tmp, 1);
   DEBUG_println();
 }
-void (* const notifyCallbackArray[])(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) = {
+static void notifyCallback_2(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {
+  String ServerName = Server[2].name;
+  DEBUG_print((ServerName + ":").c_str());
+  String tmp = "";
+  for (int i = 0; i < length; i++) {
+    DEBUG_print((char)pData[i]);     // Print character to uart
+    //DEBUG_print(pData[i]);           // print raw data to uart
+    //DEBUG_print(" ");
+    tmp += (char)pData[i];
+  }
+  BuildPacket(ServerName, tmp, 2);
+  DEBUG_println();
+}
+void (* const notifyCallbackArray[MAX_SERVER])(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) = {
   notifyCallback_0,
   notifyCallback_1,
+  notifyCallback_2,
 };
 
 bool connectToServer(server *peripheral) {
@@ -205,6 +287,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 
 
 void setup() {
+  Serial1.begin(115200);
   DEBUG_begin(115200);
   DEBUG_wait;
 
@@ -226,45 +309,45 @@ void loop() {
   // If the flag "Server[0].doConnect" is true then we have scanned for and found the desired
   // BLE Server with which we wish to connect.  Now we connect to it.  Once we are
   // Server[0].connected we set the Server[0].connected flag to be true.
-  if (Server[0].doConnect == true) {
-    if (connectToServer(&Server[0])) {
-      DEBUG_println("We are now connected to the BLE Server.");
-      Server[0].connected = true;
-      //Server[0].pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
-    } else {
-      DEBUG_println("We have failed to connect to the server; there is nothin more we will do.");
+  for (int i = 0; i < MAX_SERVER; i++)
+  {
+    if (Server[i].doConnect == true) {
+      if (connectToServer(&Server[i])) {
+        DEBUG_println("We are now connected to the BLE Server.");
+        Server[i].connected = true;
+        //Server[i].pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
+      } else {
+        DEBUG_println("We have failed to connect to the server; there is nothin more we will do.");
+      }
+      Server[i].doConnect = false; //DEBUG default valid
     }
-    Server[0].doConnect = false; //DEBUG default valid
   }
 
-  // If we are Server[0].connected to a peer BLE Server perform the following actions every five seconds:
-  //   Toggle notifications for the TX Characteristic on and off.
-  //   Update the RX characteristic with the current time since boot string.
-  if (Server[0].connected) {
-    // Set the characteristic's value to be the array of bytes that is actually a string
-    //String timeSinceBoot = "Time since boot: " + String(millis() / 1000);
-    //Server[0].pRXCharacteristic->writeValue(timeSinceBoot.c_str(), timeSinceBoot.length());
-  }
-
-  if (Server[1].doConnect == true) {
-    if (connectToServer(&Server[1])) {
-      DEBUG_println("We are now connected to the BLE Server.");
-      Server[1].connected = true;
-      //Server[1].pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
-    } else {
-      DEBUG_println("We have failed to connect to the server; there is nothin more we will do.");
+  String DPY = "Display";
+  for (int i = 0; i < MAX_SERVER; i++)
+  {
+    if (Server[i].connected && (Server[i].name == DPY))
+    {
+      String tmp = String(packet.Cadence);
+      tmp += " ";
+      tmp += String(packet.PowerAvg);
+      tmp += " ";
+      tmp += String(int(packet.PowerMeterBat * 100.0));
+      tmp += " ";
+      tmp += String(int(packet.AirSpeed * 100.0));
+      tmp += " ";
+      tmp += String(int(packet.AirMeterBat * 100.0));
+      tmp += ",";
+      DisplayPacket = tmp;
+      Server[i].pRXCharacteristic->writeValue(DisplayPacket.c_str(), DisplayPacket.length());
+      DEBUG_println("Send to Display");
     }
-    Server[1].doConnect = false; //DEBUG default valid
   }
 
-  // If we are Server[1].connected to a peer BLE Server perform the following actions every five seconds:
-  //   Toggle notifications for the TX Characteristic on and off.
-  //   Update the RX characteristic with the current time since boot string.
-  if (Server[1].connected) {
-    // Set the characteristic's value to be the array of bytes that is actually a string
-    //String timeSinceBoot = "Time since boot: " + String(millis() / 1000);
-    //Server[1].pRXCharacteristic->writeValue(timeSinceBoot.c_str(), timeSinceBoot.length());
+  if (Serial1.read() != -1)
+  {
+    Serial1.write(packet.bin, sizeof(PACKET));
   }
 
-  delay(100); // Delay five seconds between loops.
+  delay(500); // Delay five seconds between loops.
 } // End of loop
