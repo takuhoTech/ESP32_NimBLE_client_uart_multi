@@ -68,10 +68,10 @@
 union PACKET
 {
   struct {
-    bool AirMeterIsOpen = 0;  //1byte
+    bool AirMeterIsOpen = false;  //1byte
     float AirSpeed;      //4byte
     float AirMeterBat;   //4byte
-    bool PowerMeterIsOpen = 0; //1byte
+    bool PowerMeterIsOpen = false; //1byte
     uint16_t Cadence;    //2byte
     uint16_t PowerAvg;   //2byte
     uint16_t PowerMax;   //2byte
@@ -119,14 +119,14 @@ static void BuildPacket(String PrphName, String str, int index)
   //String DPY = "Display";
   if (PrphName == AIR)
   {
-    packet.AirMeterIsOpen = 1;
+    //packet.AirMeterIsOpen = true;
     StringSplitter *AirData = new StringSplitter(str, ' ', 2);
     packet.AirSpeed = AirData->getItemAtIndex(0).toFloat();
     packet.AirMeterBat = AirData->getItemAtIndex(1).toFloat();
   }
   else if (PrphName == PWR)
   {
-    packet.PowerMeterIsOpen = 1;
+    //packet.PowerMeterIsOpen = true;
     StringSplitter *PowerData = new StringSplitter(str, ' ', 4);
     packet.Cadence = PowerData->getItemAtIndex(0).toInt();
     packet.PowerAvg = PowerData->getItemAtIndex(1).toInt();
@@ -201,6 +201,61 @@ void (* const notifyCallbackArray[MAX_SERVER])(BLERemoteCharacteristic* pBLERemo
   notifyCallback_2,
 };
 
+class MyClientCallback : public BLEClientCallbacks
+{
+    void onConnect(BLEClient *pclient)
+    {
+      //DEBUG_print(Server[pclient->index].name.c_str());
+      //DEBUG_println(" Connected Callback");
+      String AIR = "AirMeter";
+      String PWR = "PowerMeter";
+      String DPY = "Display";
+      DEBUG_print(" - Callback ");
+      if (Server[pclient->index].name == AIR)
+      {
+        packet.AirMeterIsOpen = true;
+        DEBUG_println("AirMeter Connected.");
+      }
+      else if (Server[pclient->index].name == PWR)
+      {
+        packet.PowerMeterIsOpen = true;
+        DEBUG_println("PowerMeter Connected.");
+      }
+      else if (Server[pclient->index].name == DPY)
+      {
+        DEBUG_println("Display Connected.");
+      }
+    }
+    void onDisconnect(BLEClient *pclient)
+    {
+      String AIR = "AirMeter";
+      String PWR = "PowerMeter";
+      String DPY = "Display";
+      DEBUG_print(" - Callback ");
+      if (Server[pclient->index].name == AIR)
+      {
+        packet.AirMeterIsOpen = false;
+        Server[pclient->index].connected = false;
+        Server[pclient->index].doConnect = true;
+        DEBUG_println("AirMeter Disconnected. Try reConnect.");
+      }
+      else if (Server[pclient->index].name == PWR)
+      {
+        packet.PowerMeterIsOpen = false;
+        Server[pclient->index].connected = false;
+        Server[pclient->index].doConnect = true;
+        DEBUG_println("PowerMeter Disconnected. Try reConnect.");
+      }
+      else if (Server[pclient->index].name == DPY)
+      {
+        Server[pclient->index].connected = false;
+        Server[pclient->index].doConnect = false;
+        DEBUG_println("Display Disconnected. Do nothing.");
+      }
+      //DEBUG_println("onDisconnect");
+    }
+};
+
 bool connectToServer(server *peripheral) {
   DEBUG_print("Establishing a connection to device address: ");
   DEBUG_println((*peripheral->pServerAddress).toString().c_str());
@@ -208,7 +263,12 @@ bool connectToServer(server *peripheral) {
   BLEClient*  pClient  = BLEDevice::createClient();
   DEBUG_println(" - Created client");
 
+  pClient->index = peripheral->index;
+
+  pClient->setClientCallbacks(new MyClientCallback());
+
   // Connect to the remove BLE Server.
+  pClient->setConnectTimeout(3); //3 seconds
   pClient->connect(*peripheral->pServerAddress);
   DEBUG_println(" - Connected to server");
 
@@ -254,10 +314,6 @@ bool connectToServer(server *peripheral) {
   return true;
 }
 
-
-/**
-   Scan for BLE servers and find the first one that advertises the Nordic UART service.
-*/
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     //Called for each advertising BLE server.
     void onResult(BLEAdvertisedDevice* advertisedDevice) {
@@ -270,7 +326,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         DEBUG_println("Found a device with the desired ServiceUUID!");
         for (int i = 0; i < MAX_SERVER; i++)
         {
-          if (Server[i].doConnect == false)
+          if ((Server[i].doConnect == false) && (Server[i].connected == false))
           {
             //advertisedDevice->getScan()->stop();
             Server[i].pServerAddress = new BLEAddress(advertisedDevice->getAddress());
@@ -295,59 +351,66 @@ void setup() {
 
   BLEDevice::init("");
 
+} // End of setup.
+
+void loop() {
   // Retrieve a Scanner and set the callback we want to use to be informed when we
   // have detected a new device. Specify that we want active scanning and start the
   // scan to run for 30 seconds.
   BLEScan* pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setActiveScan(true);
-  pBLEScan->start(10);
-} // End of setup.
+  pBLEScan->start(15);
 
-void loop() {
+  while (true) {
 
-  // If the flag "Server[0].doConnect" is true then we have scanned for and found the desired
-  // BLE Server with which we wish to connect.  Now we connect to it.  Once we are
-  // Server[0].connected we set the Server[0].connected flag to be true.
-  for (int i = 0; i < MAX_SERVER; i++)
-  {
-    if (Server[i].doConnect == true) {
-      if (connectToServer(&Server[i])) {
-        DEBUG_println("We are now connected to the BLE Server.");
-        Server[i].connected = true;
-        //Server[i].pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
-      } else {
-        DEBUG_println("We have failed to connect to the server; there is nothin more we will do.");
-      }
-      Server[i].doConnect = false; //DEBUG default valid
-    }
-  }
-
-  String DPY = "Display";
-  for (int i = 0; i < MAX_SERVER; i++)
-  {
-    if (Server[i].connected && (Server[i].name == DPY))
+    // If the flag "Server[0].doConnect" is true then we have scanned for and found the desired
+    // BLE Server with which we wish to connect.  Now we connect to it.  Once we are
+    // Server[0].connected we set the Server[0].connected flag to be true.
+    for (int i = 0; i < MAX_SERVER; i++)
     {
-      String tmp = String(packet.Cadence);
-      tmp += " ";
-      tmp += String(packet.PowerAvg);
-      tmp += " ";
-      tmp += String(int(packet.PowerMeterBat * 100.0));
-      tmp += " ";
-      tmp += String(int(packet.AirSpeed * 100.0));
-      tmp += " ";
-      tmp += String(int(packet.AirMeterBat * 100.0));
-      tmp += ",";
-      DisplayPacket = tmp;
-      Server[i].pRXCharacteristic->writeValue(DisplayPacket.c_str(), DisplayPacket.length());
-      DEBUG_println("Send to Display");
+      if (Server[i].doConnect == true) {
+        if (connectToServer(&Server[i])) {
+          DEBUG_println("We are now connected to the BLE Server.");
+          Server[i].connected = true;
+          //Server[i].pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
+          Server[i].doConnect = false; //false only when connect success
+        }
+        else
+        {
+          DEBUG_println("Failed to connect to the server. Try again later.");
+        }
+
+      }
     }
-  }
 
-  if (Serial1.read() != -1)
-  {
-    Serial1.write(packet.bin, sizeof(PACKET));
-  }
+    String DPY = "Display";
+    for (int i = 0; i < MAX_SERVER; i++)
+    {
+      if (Server[i].connected && (Server[i].name == DPY))
+      {
+        String tmp = String(packet.Cadence);
+        tmp += " ";
+        tmp += String(packet.PowerAvg);
+        tmp += " ";
+        tmp += String(int(packet.PowerMeterBat * 100.0));
+        tmp += " ";
+        tmp += String(int(packet.AirSpeed * 100.0));
+        tmp += " ";
+        tmp += String(int(packet.AirMeterBat * 100.0));
+        tmp += ",";
+        DisplayPacket = tmp;
+        Server[i].pRXCharacteristic->writeValue(DisplayPacket.c_str(), DisplayPacket.length());
+        DEBUG_println("Send to Display");
+      }
+    }
 
-  delay(500); // Delay five seconds between loops.
+    if (Serial1.read() != -1)
+    {
+      Serial1.write(packet.bin, sizeof(PACKET));
+      DEBUG_println("Send to Pico");
+    }
+
+    delay(500); // Delay five seconds between loops.
+  }
 } // End of loop
