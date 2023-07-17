@@ -51,13 +51,19 @@
 */
 #include "StringSplitter.h"
 #include <NimBLEDevice.h>
+#include <Ticker.h>
+#include <HardwareSerial.h>
+
+HardwareSerial SerialPICO(0);
+
 #define DEBUG
 
 #ifdef DEBUG
 #define DEBUG_begin(x) Serial.begin(x)
 #define DEBUG_print(x) Serial.print(x)
 #define DEBUG_println(x) Serial.println(x)
-#define DEBUG_wait while(!Serial)yield()
+//#define DEBUG_wait while(!Serial)yield()
+#define DEBUG_wait
 #else
 #define DEBUG_begin(x)
 #define DEBUG_print(x)
@@ -123,6 +129,7 @@ static void BuildPacket(String PrphName, String str, int index)
     StringSplitter *AirData = new StringSplitter(str, ' ', 2);
     packet.AirSpeed = AirData->getItemAtIndex(0).toFloat();
     packet.AirMeterBat = AirData->getItemAtIndex(1).toFloat();
+
   }
   else if (PrphName == PWR)
   {
@@ -249,7 +256,7 @@ class MyClientCallback : public BLEClientCallbacks
       else if (Server[pclient->index].name == DPY)
       {
         Server[pclient->index].connected = false;
-        Server[pclient->index].doConnect = false;
+        Server[pclient->index].doConnect = true;
         DEBUG_println("Display Disconnected. Do nothing.");
       }
       //DEBUG_println("onDisconnect");
@@ -290,10 +297,10 @@ bool connectToServer(server *peripheral) {
   }
   DEBUG_println(" - Remote BLE TX characteristic reference established");
 
-  // Read the value of the TX characteristic.
-  std::string value = peripheral->pTXCharacteristic->readValue();
-  DEBUG_print("The characteristic value is currently: ");
-  DEBUG_println(value.c_str());
+  /*// Read the value of the TX characteristic.
+    std::string value = peripheral->pTXCharacteristic->readValue();
+    DEBUG_print("The characteristic value is currently: ");
+    DEBUG_println(value.c_str());*/
 
   peripheral->pTXCharacteristic->registerForNotify(notifyCallbackArray[peripheral->index]);//DEBUG default valid
 
@@ -341,15 +348,58 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     }
 }; // MyAdvertisedDeviceCallbacks
 
+Ticker SendDisplayTimer;
+Ticker SerialPicoTimer;
+
+void SendDisplay()
+{
+  String DPY = "Display";
+  for (int i = 0; i < MAX_SERVER; i++)
+  {
+    if (Server[i].connected && (Server[i].name == DPY))
+      //if (Server[i].connected)
+    {
+      String tmp = String(packet.Cadence);
+      tmp += " ";
+      tmp += String(packet.PowerAvg);
+      tmp += " ";
+      tmp += String(int(packet.PowerMeterBat * 100.0));
+      tmp += " ";
+      tmp += String(int(packet.AirSpeed * 100.0));
+      tmp += " ";
+      tmp += String(int(packet.AirMeterBat * 100.0));
+      tmp += ",";
+      DisplayPacket = tmp;
+      Server[i].pRXCharacteristic->writeValue(DisplayPacket.c_str(), DisplayPacket.length());
+      DEBUG_println("Send to Display");
+    }
+
+  }
+}
+void SerialPico()
+{
+  //while (SerialPICO.available() > 1);
+  if (SerialPICO.read() != -1)
+  {
+    SerialPICO.write(packet.bin, sizeof(PACKET));
+    DEBUG_println("Send to Pico");
+  }
+  while (SerialPICO.available() > 0)
+  {
+    SerialPICO.read();
+  }
+}
 
 void setup() {
-  Serial1.begin(115200);
+  SerialPICO.begin(115200, SERIAL_8N1, -1, -1);
   DEBUG_begin(115200);
   DEBUG_wait;
 
   DEBUG_println("Starting Arduino BLE Central Mode (Client) Nordic UART Service");
 
   BLEDevice::init("");
+
+  SerialPicoTimer.attach(0.1, SerialPico);
 
 } // End of setup.
 
@@ -362,8 +412,10 @@ void loop() {
   pBLEScan->setActiveScan(true);
   pBLEScan->start(15);
 
-  while (true) {
+  SendDisplayTimer.attach(0.5, SendDisplay);
+  //SerialPicoTimer.attach(0.1, SerialPico);
 
+  while (true) {
     // If the flag "Server[0].doConnect" is true then we have scanned for and found the desired
     // BLE Server with which we wish to connect.  Now we connect to it.  Once we are
     // Server[0].connected we set the Server[0].connected flag to be true.
@@ -384,9 +436,9 @@ void loop() {
       }
     }
 
-    String DPY = "Display";
-    for (int i = 0; i < MAX_SERVER; i++)
-    {
+    /*String DPY = "Display";
+      for (int i = 0; i < MAX_SERVER; i++)
+      {
       if (Server[i].connected && (Server[i].name == DPY))
       {
         String tmp = String(packet.Cadence);
@@ -403,14 +455,19 @@ void loop() {
         Server[i].pRXCharacteristic->writeValue(DisplayPacket.c_str(), DisplayPacket.length());
         DEBUG_println("Send to Display");
       }
-    }
-
-    if (Serial1.read() != -1)
-    {
-      Serial1.write(packet.bin, sizeof(PACKET));
+      }
+      while (SerialPICO.available() > 1);
+      if (SerialPICO.read() != -1)
+      {
+      SerialPICO.write(packet.bin, sizeof(PACKET));
       DEBUG_println("Send to Pico");
-    }
+      }*/
 
-    delay(500); // Delay five seconds between loops.
+    delay(100);
+
+    DEBUG_print("MEMORY:");
+
+    DEBUG_println(ESP.getFreeHeap());
+    //auto tmpArray = new long[1000];
   }
 } // End of loop
