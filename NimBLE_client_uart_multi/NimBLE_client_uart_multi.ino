@@ -56,13 +56,18 @@
 
 HardwareSerial SerialPICO(0);
 
+extern "C" {
+  uint8_t temprature_sens_read();
+}
+
 #define DEBUG
+#define DEBUGTEMP
 
 #ifdef DEBUG
 #define DEBUG_begin(x) Serial.begin(x)
 #define DEBUG_print(x) Serial.print(x)
 #define DEBUG_println(x) Serial.println(x)
-//#define DEBUG_wait while(!Serial)yield()
+#define DEBUG_wait while(!Serial)yield()
 #define DEBUG_wait
 #else
 #define DEBUG_begin(x)
@@ -72,19 +77,19 @@ HardwareSerial SerialPICO(0);
 #endif
 
 union PACKET
-{
-  struct {
-    bool AirMeterIsOpen = false;  //1byte
-    float AirSpeed;      //4byte
-    float AirMeterBat;   //4byte
-    bool PowerMeterIsOpen = false; //1byte
-    uint16_t Cadence;    //2byte
-    uint16_t PowerAvg;   //2byte
-    uint16_t PowerMax;   //2byte
-    float PowerMeterBat; //4byte
+  {
+    struct {
+      bool AirMeterIsOpen = false;  //1byte
+      float AirSpeed;      //4byte
+      float AirMeterBat;   //4byte
+      bool PowerMeterIsOpen = false; //1byte
+      uint16_t Cadence;    //2byte
+      uint16_t PowerAvg;   //2byte
+      uint16_t PowerMax;   //2byte
+      float PowerMeterBat; //4byte
+    };
+    uint8_t bin[20];
   };
-  uint8_t bin[20];
-};
 static PACKET packet;
 
 static String DisplayPacket;
@@ -257,7 +262,7 @@ class MyClientCallback : public BLEClientCallbacks
       {
         Server[pclient->index].connected = false;
         Server[pclient->index].doConnect = true;
-        DEBUG_println("Display Disconnected. Do nothing.");
+        DEBUG_println("Display Disconnected. Try reConnect.");
       }
       //DEBUG_println("onDisconnect");
     }
@@ -463,11 +468,12 @@ void loop() {
       DEBUG_println("Send to Pico");
       }*/
 
+    //DEBUG_print("MEMORY:");
+    //DEBUG_println(ESP.getFreeHeap());
+
+#ifdef DEBUGTEMP
+    DEBUG_println(temperatureRead());
+#endif
     delay(100);
-
-    DEBUG_print("MEMORY:");
-
-    DEBUG_println(ESP.getFreeHeap());
-    //auto tmpArray = new long[1000];
   }
 } // End of loop
