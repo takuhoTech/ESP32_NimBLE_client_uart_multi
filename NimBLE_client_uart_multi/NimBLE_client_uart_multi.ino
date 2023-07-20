@@ -61,7 +61,7 @@ extern "C" {
 }
 
 #define DEBUG
-#define DEBUGTEMP
+//#define DEBUGTEMP
 
 #ifdef DEBUG
 #define DEBUG_begin(x) Serial.begin(x)
@@ -281,7 +281,11 @@ bool connectToServer(server *peripheral) {
 
   // Connect to the remove BLE Server.
   pClient->setConnectTimeout(3); //3 seconds
-  pClient->connect(*peripheral->pServerAddress);
+  if (!(pClient->connect(*peripheral->pServerAddress)))
+  {
+    DEBUG_println(" - Connect func returned false");
+    return false;
+  }
   DEBUG_println(" - Connected to server");
 
   // Obtain a reference to the Nordic UART service on the remote BLE server.
