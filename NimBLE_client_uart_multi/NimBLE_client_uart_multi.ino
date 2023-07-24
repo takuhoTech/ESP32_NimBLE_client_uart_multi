@@ -60,8 +60,10 @@ extern "C" {
   uint8_t temprature_sens_read();
 }
 
-#define DEBUG
-//#define DEBUGTEMP
+//#define DEBUG
+//#define DEBUG_MEM
+//#define DEBUG_TEMP
+#define SET_CONNECT_TIMEOUT
 
 #ifdef DEBUG
 #define DEBUG_begin(x) Serial.begin(x)
@@ -280,7 +282,9 @@ bool connectToServer(server *peripheral) {
   pClient->setClientCallbacks(new MyClientCallback());
 
   // Connect to the remove BLE Server.
+#ifdef SET_CONNECT_TIMEOUT
   pClient->setConnectTimeout(3); //3 seconds
+#endif
   if (!(pClient->connect(*peripheral->pServerAddress)))
   {
     DEBUG_println(" - Connect func returned false");
@@ -404,7 +408,7 @@ void setup() {
   DEBUG_begin(115200);
   DEBUG_wait;
 
-  DEBUG_println("Starting Arduino BLE Central Mode (Client) Nordic UART Service");
+  DEBUG_println("Starting BLE Central - Nordic UART Service");
 
   BLEDevice::init("");
 
@@ -422,12 +426,8 @@ void loop() {
   pBLEScan->start(15);
 
   SendDisplayTimer.attach(0.5, SendDisplay);
-  //SerialPicoTimer.attach(0.1, SerialPico);
 
   while (true) {
-    // If the flag "Server[0].doConnect" is true then we have scanned for and found the desired
-    // BLE Server with which we wish to connect.  Now we connect to it.  Once we are
-    // Server[0].connected we set the Server[0].connected flag to be true.
     for (int i = 0; i < MAX_SERVER; i++)
     {
       if (Server[i].doConnect == true) {
@@ -441,41 +441,15 @@ void loop() {
         {
           DEBUG_println("Failed to connect to the server. Try again later.");
         }
-
       }
     }
 
-    /*String DPY = "Display";
-      for (int i = 0; i < MAX_SERVER; i++)
-      {
-      if (Server[i].connected && (Server[i].name == DPY))
-      {
-        String tmp = String(packet.Cadence);
-        tmp += " ";
-        tmp += String(packet.PowerAvg);
-        tmp += " ";
-        tmp += String(int(packet.PowerMeterBat * 100.0));
-        tmp += " ";
-        tmp += String(int(packet.AirSpeed * 100.0));
-        tmp += " ";
-        tmp += String(int(packet.AirMeterBat * 100.0));
-        tmp += ",";
-        DisplayPacket = tmp;
-        Server[i].pRXCharacteristic->writeValue(DisplayPacket.c_str(), DisplayPacket.length());
-        DEBUG_println("Send to Display");
-      }
-      }
-      while (SerialPICO.available() > 1);
-      if (SerialPICO.read() != -1)
-      {
-      SerialPICO.write(packet.bin, sizeof(PACKET));
-      DEBUG_println("Send to Pico");
-      }*/
-
-    //DEBUG_print("MEMORY:");
-    //DEBUG_println(ESP.getFreeHeap());
-
-#ifdef DEBUGTEMP
+#ifdef DEBUG_MEM
+    DEBUG_print("MEMORY:");
+    DEBUG_println(ESP.getFreeHeap());
+#endif
+#ifdef DEBUG_TEMP
+    DEBUG_print("TEMP:");
     DEBUG_println(temperatureRead());
 #endif
     delay(100);
