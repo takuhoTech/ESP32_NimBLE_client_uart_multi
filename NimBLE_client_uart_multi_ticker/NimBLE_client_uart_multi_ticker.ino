@@ -350,8 +350,8 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     }
 }; // MyAdvertisedDeviceCallbacks
 
-Ticker SendDisplayTimer;
-Ticker SerialPicoTimer;
+//Ticker SendDisplayTimer;
+//Ticker SerialPicoTimer;
 Ticker ConnectTimer[MAX_SERVER];
 
 void SendDisplay()
@@ -373,6 +373,16 @@ void SendDisplay()
     DEBUG_println("Send to Display");
   }
 }
+void SendDisplayTask(void *pvParameters)
+{
+  while (true)
+  {
+    SendDisplay();
+    delay(1000);
+  }
+  vTaskDelete(NULL);
+}
+
 void SerialPico()
 {
   //while (SerialPICO.available() > 1);
@@ -387,6 +397,15 @@ void SerialPico()
     SerialPICO.read();
   }
   DEBUG_println("");
+}
+void SerialPicoTask(void *pvParameters)
+{
+  while (true)
+  {
+    SerialPico();
+    delay(100);
+  }
+  vTaskDelete(NULL);
 }
 
 void ConnectPrph(int index)
@@ -404,7 +423,7 @@ void ConnectPrph(int index)
       DEBUG_println("Failed to connect to the server. Try again later.");
     }
   }
-  ConnectTimer[index].once(1, ConnectPrph, index);
+  ConnectTimer[index].once(1, ConnectPrph, index);//whileの外でConnectPrphが呼ばれている場合にこれを消すと再接続できない
 }
 
 void setup() {
@@ -414,16 +433,28 @@ void setup() {
 
   DEBUG_println("Starting Nordic UART central");
 
+  //SendDisplayTimer.attach_ms(1000, SendDisplay);//こっちを使うと、再接続できない
+  //SerialPicoTimer.attach_ms(100, SerialPico);
+  xTaskCreateUniversal(
+    SerialPicoTask,
+    "SerialPicoTask",
+    8192,
+    NULL,
+    configMAX_PRIORITIES - 4,
+    NULL,
+    APP_CPU_NUM
+  );
+  xTaskCreateUniversal(
+    SendDisplayTask,
+    "SendDisplayTask",
+    8192,
+    NULL,
+    configMAX_PRIORITIES - 5,
+    NULL,
+    APP_CPU_NUM
+  );
+
   BLEDevice::init("");
-
-  SerialPicoTimer.attach_ms(100, SerialPico);
-
-} // End of setup.
-
-void loop() {
-  // Retrieve a Scanner and set the callback we want to use to be informed when we
-  // have detected a new device. Specify that we want active scanning and start the
-  // scan to run for 30 seconds.
   BLEScan* pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setActiveScan(true);
@@ -433,20 +464,18 @@ void loop() {
     //ConnectTimer[i].once(0, ConnectPrph, i);
     ConnectPrph(i);
   }
-  //SendDisplayTimer.attach_ms(1000, SendDisplay);//こっちを使うと、再接続できない
+}
 
-  while (true) {
-    //SerialPico();
-    SendDisplay();
-
+void loop() {
+  //SerialPico();
+  //SendDisplay();
 #ifdef DEBUG_MEM
-    DEBUG_print("MEMORY:");
-    DEBUG_println(ESP.getFreeHeap());
+  DEBUG_print("MEMORY:");
+  DEBUG_println(ESP.getFreeHeap());
 #endif
 #ifdef DEBUG_TEMP
-    DEBUG_print("TEMP:");
-    DEBUG_println(temperatureRead());
+  DEBUG_print("TEMP:");
+  DEBUG_println(temperatureRead());
 #endif
-    delay(500);
-  }
-} // End of loop
+  delay(1000);
+}
