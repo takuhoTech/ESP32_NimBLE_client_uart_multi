@@ -1,4 +1,5 @@
 //何故かCore Debug LevelをDebugにするとconnectを同時によんでも全部接続できる
+//NimBLEClient.cppのline264を編集済み
 
 #include "StringSplitter.h"
 #include <NimBLEDevice.h>
@@ -7,10 +8,11 @@
 
 HardwareSerial SerialPICO(0);
 
-#define DEBUG
-#define DEBUG_MEM
+//#define DEBUG
+//#define DEBUG_MEM
 //#define DEBUG_TEMP
 //#define PICONOTIFY
+#define ADVDURATION 15
 
 #ifdef DEBUG_TEMP
 extern "C" {
@@ -85,7 +87,7 @@ static void BuildPacket(String PrphName, String str, int index)
     StringSplitter *AirData = new StringSplitter(str, ' ', 2);
     packet.AirSpeed = AirData->getItemAtIndex(0).toFloat();
     packet.AirMeterBat = AirData->getItemAtIndex(1).toFloat();
-
+    delete AirData;
   }
   else if (index == POWERMETER)
   {
@@ -95,6 +97,7 @@ static void BuildPacket(String PrphName, String str, int index)
     packet.PowerAvg = PowerData->getItemAtIndex(1).toInt();
     packet.PowerMax = PowerData->getItemAtIndex(2).toInt();
     packet.PowerMeterBat = PowerData->getItemAtIndex(3).toFloat();
+    delete PowerData;
   }
   /*else if (index == ROUNDDISPLAY)//Readyメッセージが届いたら、送り返す
     {
@@ -304,10 +307,6 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     }
 }; // MyAdvertisedDeviceCallbacks
 
-//Ticker SendDisplayTimer;
-//Ticker SerialPicoTimer;
-//Ticker ConnectTimer[MAX_SERVER];
-
 void SendDisplay()
 {
   if (Server[ROUNDDISPLAY].connected)
@@ -375,12 +374,12 @@ void ConnectPrph(int index)
     if (connectToServer(&Server[index])) {
       DEBUG_println("Connection success");
       Server[index].connected = true;
-      //Server[index].pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
       Server[index].doConnect = false; //false only when connect success
+      //Server[index].pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
     }
     else
     {
-      DEBUG_println("Failed to connect to the server. Try again later.");
+      DEBUG_println("Connect Failed. Try again later.");
     }
   }
 }
@@ -388,7 +387,7 @@ void ConnectPrphTask_0(void *pvParameters)
 {
   while (true)
   {
-    DEBUG_println("Connect Task 0");
+    //DEBUG_println("Connect Task 0");
     ConnectPrph(0);
     delay(500);
   }
@@ -398,7 +397,7 @@ void ConnectPrphTask_1(void *pvParameters)
 {
   while (true)
   {
-    DEBUG_println("Connect Task 1");
+    //DEBUG_println("Connect Task 1");
     ConnectPrph(1);
     delay(500);
   }
@@ -408,7 +407,7 @@ void ConnectPrphTask_2(void *pvParameters)
 {
   while (true)
   {
-    DEBUG_println("Connect Task 2");
+    //DEBUG_println("Connect Task 2");
     ConnectPrph(2);
     delay(500);
   }
@@ -441,7 +440,7 @@ void setup() {
   BLEScan* pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setActiveScan(true);
-  pBLEScan->start(10);//ConnectPrphTask生成の前でないといけない
+  pBLEScan->start(ADVDURATION);//ConnectPrphTask生成の前でないといけない
   for (int i = 0; i < MAX_SERVER; i++)
   {
     DEBUG_println("Create connect task");
@@ -454,7 +453,6 @@ void setup() {
       NULL,
       APP_CPU_NUM
     );
-    //delay(1000);
   }
 
   xTaskCreateUniversal(
@@ -469,8 +467,6 @@ void setup() {
 }
 
 void loop() {
-  //SerialPico();
-  //SendDisplay();
 #ifdef DEBUG_MEM
   DEBUG_print("MEMORY:");
   DEBUG_println(ESP.getFreeHeap());
