@@ -8,7 +8,7 @@
 
 HardwareSerial SerialPICO(0);
 
-//#define DEBUG
+#define DEBUG
 //#define DEBUG_MEM
 //#define DEBUG_TEMP
 //#define PICONOTIFY
@@ -226,13 +226,15 @@ bool connectToServer(server *peripheral) {
 
   pClient->index = peripheral->index;
 
-  pClient->setClientCallbacks(new MyClientCallback());
+  MyClientCallback* ClientCallback = new MyClientCallback();
+  pClient->setClientCallbacks(ClientCallback);
 
   // Connect to the remove BLE Server.
   //pClient->setConnectTimeout(3); //seconds
   if (!(pClient->connect(*peripheral->pServerAddress)))
   {
     DEBUG_println(" - Connect func returned false");
+    delete ClientCallback;
     return false;
   }
   DEBUG_println(" - Connected to server");
@@ -242,6 +244,7 @@ bool connectToServer(server *peripheral) {
   if (pRemoteService == nullptr) {
     DEBUG_print("Failed to find Nordic UART service UUID: ");
     DEBUG_println(serviceUUID.toString().c_str());
+    delete ClientCallback;
     return false;
   }
   DEBUG_println(" - Remote BLE service reference established");
@@ -251,6 +254,7 @@ bool connectToServer(server *peripheral) {
   if (peripheral->pTXCharacteristic == nullptr) {
     DEBUG_print("Failed to find TX characteristic UUID: ");
     DEBUG_println(charUUID_TX.toString().c_str());
+    delete ClientCallback;
     return false;
   }
   DEBUG_println(" - Remote BLE TX characteristic reference established");
@@ -268,6 +272,7 @@ bool connectToServer(server *peripheral) {
   if (peripheral->pRXCharacteristic == nullptr) {
     DEBUG_print("Failed to find RX characteristic UUID: ");
     DEBUG_println(charUUID_RX.toString().c_str());
+    delete ClientCallback;
     return false;
   }
   DEBUG_println(" - Remote BLE RX characteristic reference established");
@@ -275,7 +280,6 @@ bool connectToServer(server *peripheral) {
   // Write to the the RX characteristic.
   //String helloValue = "Hello Remote Server";
   //peripheral->pRXCharacteristic->writeValue(helloValue.c_str(), helloValue.length());
-
   return true;
 }
 
