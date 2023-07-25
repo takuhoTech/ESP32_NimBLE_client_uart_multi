@@ -212,7 +212,7 @@ class MyClientCallback : public BLEClientCallbacks
     }
 };
 
-bool isConnecting = false;
+//bool isConnecting = false;
 
 bool connectToServer(server *peripheral) {
   DEBUG_print("Establishing a connection to device address: ");
@@ -437,6 +437,7 @@ void setup() {
   );
 
   BLEDevice::init("");
+  BLEDevice::setPower(ESP_PWR_LVL_P9);
   BLEScan* pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setActiveScan(true);
