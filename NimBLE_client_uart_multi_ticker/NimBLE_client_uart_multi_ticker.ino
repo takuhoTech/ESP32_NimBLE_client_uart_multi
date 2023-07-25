@@ -1,54 +1,5 @@
-/* Central Mode (client) BLE UART for ESP32
+//何故かCore Debug LevelをDebugにするとconnectを同時によんでも全部接続できる
 
-   This sketch is a central mode (client) Nordic UART Service (NUS) that connects automatically to a peripheral (server)
-   Nordic UART Service. NUS is what most typical "blueart" servers emulate. This sketch will connect to your BLE uart
-   device in the same manner the nRF Connect app does.
-
-   Once Server[0].connected this sketch will switch notification on using BLE2902 for the charUUID_TX characteristic which is the
-   characteristic that our server is making data available on via notification. The data received from the server
-   characteristic charUUID_TX will be printed to Serial on this device. Every five seconds this device will send the
-   string "Time since boot: #" to the server characteristic charUUID_RX, this will make that data available in the BLE
-   uart and trigger a notifyCallback or similar depending on your BLE uart server setup.
-
-
-   A brief explanation of BLE client/server actions and rolls:
-
-   Central Mode (client) - Connects to a peripheral (server).
-     -Scans for devices and reads service UUID.
-     -Connects to a server's address with the desired service UUID.
-     -Checks for and makes a reference to one or more characteristic UUID in the current service.
-     -The client can send data to the server by writing to this RX Characteristic.
-     -If the client has enabled notifications for the TX characteristic, the server can send data to the client as
-     notifications to that characteristic. This will trigger the notifyCallback function.
-
-   Peripheral (server) - Accepts connections from a central mode device (client).
-     -Advertises a service UUID.
-     -Creates one or more characteristic for the advertised service UUID
-     -Accepts connections from a client.
-     -The server can send data to the client by writing to this TX Characteristic.
-     -If the server has enabled notifications for the RX characteristic, the client can send data to the server as
-     notifications to that characteristic. This the default function on most "Nordic UART Service" BLE uart sketches.
-
-
-   Copyright <2018> <Josh Campbell>
-   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
-   documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
-   rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
-   permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright
-   notice and this permission notice shall be included in all copies or substantial portions of the Software. THE
-   SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
-   WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-   COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
-   Based on the "BLE_Client" example by Neil Kolban:
-   https://github.com/nkolban/esp32-snippets/blob/master/cpp_utils/tests/BLETests/Arduino/BLE_client/BLE_client.ino
-   With help from an example by Andreas Spiess:
-   https://github.com/SensorsIot/Bluetooth-BLE-on-Arduino-IDE/blob/master/Polar_Receiver/Polar_Receiver.ino
-   Nordic UART Service info:
-   https://infocenter.nordicsemi.com/index.jsp?topic=%2Fcom.nordic.infocenter.sdk5.v14.0.0%2Fble_sdk_app_nus_eval.html
-*/
 #include "StringSplitter.h"
 #include <NimBLEDevice.h>
 #include <Ticker.h>
@@ -59,6 +10,7 @@ HardwareSerial SerialPICO(0);
 #define DEBUG
 #define DEBUG_MEM
 //#define DEBUG_TEMP
+//#define PICONOTIFY
 
 #ifdef DEBUG_TEMP
 extern "C" {
@@ -260,6 +212,8 @@ class MyClientCallback : public BLEClientCallbacks
     }
 };
 
+bool isConnecting = false;
+
 bool connectToServer(server *peripheral) {
   DEBUG_print("Establishing a connection to device address: ");
   DEBUG_println((*peripheral->pServerAddress).toString().c_str());
@@ -272,7 +226,7 @@ bool connectToServer(server *peripheral) {
   pClient->setClientCallbacks(new MyClientCallback());
 
   // Connect to the remove BLE Server.
-  pClient->setConnectTimeout(3); //seconds
+  //pClient->setConnectTimeout(3); //seconds
   if (!(pClient->connect(*peripheral->pServerAddress)))
   {
     DEBUG_println(" - Connect func returned false");
@@ -352,7 +306,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 
 //Ticker SendDisplayTimer;
 //Ticker SerialPicoTimer;
-Ticker ConnectTimer[MAX_SERVER];
+//Ticker ConnectTimer[MAX_SERVER];
 
 void SendDisplay()
 {
@@ -386,17 +340,23 @@ void SendDisplayTask(void *pvParameters)
 void SerialPico()
 {
   //while (SerialPICO.available() > 1);
+#ifdef PICONOTIFY
   DEBUG_print("Check Pico request");
+#endif
   if (SerialPICO.read() != -1)
   {
     SerialPICO.write(packet.bin, sizeof(PACKET));
+#ifdef PICONOTIFY
     DEBUG_print(" - Send to Pico");
+#endif
   }
   while (SerialPICO.available() > 0)
   {
     SerialPICO.read();
   }
+#ifdef PICONOTIFY
   DEBUG_println("");
+#endif
 }
 void SerialPicoTask(void *pvParameters)
 {
@@ -423,18 +383,49 @@ void ConnectPrph(int index)
       DEBUG_println("Failed to connect to the server. Try again later.");
     }
   }
-  ConnectTimer[index].once(1, ConnectPrph, index);//whileの外でConnectPrphが呼ばれている場合にこれを消すと再接続できない
 }
+void ConnectPrphTask_0(void *pvParameters)
+{
+  while (true)
+  {
+    DEBUG_println("Connect Task 0");
+    ConnectPrph(0);
+    delay(500);
+  }
+  vTaskDelete(NULL);
+}
+void ConnectPrphTask_1(void *pvParameters)
+{
+  while (true)
+  {
+    DEBUG_println("Connect Task 1");
+    ConnectPrph(1);
+    delay(500);
+  }
+  vTaskDelete(NULL);
+}
+void ConnectPrphTask_2(void *pvParameters)
+{
+  while (true)
+  {
+    DEBUG_println("Connect Task 2");
+    ConnectPrph(2);
+    delay(500);
+  }
+  vTaskDelete(NULL);
+}
+void (* const ConnectPrphTaskArray[MAX_SERVER])(void *pvParameters) = {
+  ConnectPrphTask_0,
+  ConnectPrphTask_1,
+  ConnectPrphTask_2,
+};
 
 void setup() {
   SerialPICO.begin(115200, SERIAL_8N1, -1, -1);
   DEBUG_begin(115200);
   DEBUG_wait;
-
   DEBUG_println("Starting Nordic UART central");
 
-  //SendDisplayTimer.attach_ms(1000, SendDisplay);//こっちを使うと、再接続できない
-  //SerialPicoTimer.attach_ms(100, SerialPico);
   xTaskCreateUniversal(
     SerialPicoTask,
     "SerialPicoTask",
@@ -444,6 +435,27 @@ void setup() {
     NULL,
     APP_CPU_NUM
   );
+
+  BLEDevice::init("");
+  BLEScan* pBLEScan = BLEDevice::getScan();
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pBLEScan->setActiveScan(true);
+  pBLEScan->start(10);//ConnectPrphTask生成の前でないといけない
+  for (int i = 0; i < MAX_SERVER; i++)
+  {
+    DEBUG_println("Create connect task");
+    xTaskCreateUniversal(
+      ConnectPrphTaskArray[i],
+      "ConnectPrphTask",
+      8192,
+      NULL,
+      configMAX_PRIORITIES - 1 - i,
+      NULL,
+      APP_CPU_NUM
+    );
+    //delay(1000);
+  }
+
   xTaskCreateUniversal(
     SendDisplayTask,
     "SendDisplayTask",
@@ -453,17 +465,6 @@ void setup() {
     NULL,
     APP_CPU_NUM
   );
-
-  BLEDevice::init("");
-  BLEScan* pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setActiveScan(true);
-  pBLEScan->start(10);
-  for (int i = 0; i < MAX_SERVER; i++)
-  {
-    //ConnectTimer[i].once(0, ConnectPrph, i);
-    ConnectPrph(i);
-  }
 }
 
 void loop() {
