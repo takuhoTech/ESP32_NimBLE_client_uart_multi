@@ -9,7 +9,7 @@
 HardwareSerial SerialPICO(0);
 
 #define DEBUG
-//#define DEBUG_MEM
+#define DEBUG_MEM
 //#define DEBUG_TEMP
 //#define PICONOTIFY
 #define ADV_DURATION 15
@@ -219,6 +219,7 @@ class MyClientCallback : public BLEClientCallbacks
         DEBUG_println("Display Disconnected. Try reConnect.");
       }
       //DEBUG_println("onDisconnect");
+      BLEDevice::deleteClient(pclient);
     }
 };
 
@@ -233,15 +234,14 @@ bool connectToServer(server *peripheral) {
 
   pClient->index = peripheral->index;
 
-  MyClientCallback* ClientCallback = new MyClientCallback();
-  pClient->setClientCallbacks(ClientCallback);
+  pClient->setClientCallbacks(new MyClientCallback());
 
   // Connect to the remove BLE Server.
-  //pClient->setConnectTimeout(3); //seconds
+  pClient->setConnectTimeout(5); //seconds
   if (!(pClient->connect(*peripheral->pServerAddress)))
   {
     DEBUG_println(" - Connect func returned false");
-    delete ClientCallback;
+    BLEDevice::deleteClient(pClient);
     return false;
   }
   DEBUG_println(" - Connected to server");
@@ -251,7 +251,7 @@ bool connectToServer(server *peripheral) {
   if (pRemoteService == nullptr) {
     DEBUG_print("Failed to find Nordic UART service UUID: ");
     DEBUG_println(serviceUUID.toString().c_str());
-    delete ClientCallback;
+    BLEDevice::deleteClient(pClient);
     return false;
   }
   DEBUG_println(" - Remote BLE service reference established");
@@ -261,7 +261,7 @@ bool connectToServer(server *peripheral) {
   if (peripheral->pTXCharacteristic == nullptr) {
     DEBUG_print("Failed to find TX characteristic UUID: ");
     DEBUG_println(charUUID_TX.toString().c_str());
-    delete ClientCallback;
+    BLEDevice::deleteClient(pClient);
     return false;
   }
   DEBUG_println(" - Remote BLE TX characteristic reference established");
@@ -279,7 +279,7 @@ bool connectToServer(server *peripheral) {
   if (peripheral->pRXCharacteristic == nullptr) {
     DEBUG_print("Failed to find RX characteristic UUID: ");
     DEBUG_println(charUUID_RX.toString().c_str());
-    delete ClientCallback;
+    BLEDevice::deleteClient(pClient);
     return false;
   }
   DEBUG_println(" - Remote BLE RX characteristic reference established");
@@ -457,6 +457,7 @@ void setup() {
     delay(500);
   }
   while ((!(Server[AIRMETER].doConnect)) OPERATOR (!(Server[POWERMETER].doConnect)));
+  DEBUG_println("Scan complete");
 
   for (int i = 0; i < MAX_SERVER; i++)
   {
