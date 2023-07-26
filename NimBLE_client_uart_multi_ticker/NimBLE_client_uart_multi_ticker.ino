@@ -12,7 +12,14 @@ HardwareSerial SerialPICO(0);
 //#define DEBUG_MEM
 //#define DEBUG_TEMP
 //#define PICONOTIFY
-#define ADVDURATION 15
+#define ADV_DURATION 15
+//define REQUIRE_TWO_PRPH
+
+#ifdef REQUIRE_TWO_PRPH
+#define OPERATOR ||
+#else
+#define OPERATOR &&
+#endif
 
 #ifdef DEBUG_TEMP
 extern "C" {
@@ -444,7 +451,13 @@ void setup() {
   BLEScan* pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setActiveScan(true);
-  pBLEScan->start(ADVDURATION);//ConnectPrphTask生成の前でないといけない
+  do
+  {
+    pBLEScan->start(ADV_DURATION);//ConnectPrphTask生成の前でないといけない
+    delay(500);
+  }
+  while ((!(Server[AIRMETER].doConnect)) OPERATOR (!(Server[POWERMETER].doConnect)));
+
   for (int i = 0; i < MAX_SERVER; i++)
   {
     DEBUG_println("Create connect task");
