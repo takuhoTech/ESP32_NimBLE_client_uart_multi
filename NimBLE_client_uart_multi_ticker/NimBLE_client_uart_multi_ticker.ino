@@ -14,6 +14,7 @@ HardwareSerial SerialPICO(0);
 //#define PICONOTIFY
 #define ADV_DURATION 15
 //define REQUIRE_TWO_PRPH
+#define CONNECT_TIMEOUT 3
 
 #ifdef REQUIRE_TWO_PRPH
 #define OPERATOR ||
@@ -237,7 +238,7 @@ bool connectToServer(server *peripheral) {
   pClient->setClientCallbacks(new MyClientCallback());
 
   // Connect to the remove BLE Server.
-  pClient->setConnectTimeout(5); //seconds
+  pClient->setConnectTimeout(CONNECT_TIMEOUT); //seconds
   if (!(pClient->connect(*peripheral->pServerAddress)))
   {
     DEBUG_println(" - Connect func returned false");
@@ -424,6 +425,19 @@ void ConnectPrphTask_2(void *pvParameters)
   }
   vTaskDelete(NULL);
 }
+void ConnectPrphTask_ALL(void *pvParameters)
+{
+  while (true)
+  {
+    ConnectPrph(0);
+    delay(100);
+    ConnectPrph(1);
+    delay(100);
+    ConnectPrph(2);
+    delay(500);
+  }
+  vTaskDelete(NULL);
+}
 void (* const ConnectPrphTaskArray[MAX_SERVER])(void *pvParameters) = {
   ConnectPrphTask_0,
   ConnectPrphTask_1,
@@ -459,8 +473,8 @@ void setup() {
   while ((!(Server[AIRMETER].doConnect)) OPERATOR (!(Server[POWERMETER].doConnect)));
   DEBUG_println("Scan complete");
 
-  for (int i = 0; i < MAX_SERVER; i++)
-  {
+  /*for (int i = 0; i < MAX_SERVER; i++)
+    {
     DEBUG_println("Create connect task");
     xTaskCreateUniversal(
       ConnectPrphTaskArray[i],
@@ -471,7 +485,18 @@ void setup() {
       NULL,
       APP_CPU_NUM
     );
-  }
+    }*/
+
+  DEBUG_println("Create connectALL task");
+  xTaskCreateUniversal(
+    ConnectPrphTask_ALL,
+    "ConnectPrphTask",
+    8192 * 3,
+    NULL,
+    configMAX_PRIORITIES - 1,
+    NULL,
+    APP_CPU_NUM
+  );
 
   xTaskCreateUniversal(
     SendDisplayTask,
