@@ -8,12 +8,12 @@
 
 HardwareSerial SerialPICO(0);
 
-#define DEBUG
-#define DEBUG_MEM
+//#define DEBUG
+//#define DEBUG_MEM
 //#define DEBUG_TEMP
 //#define PICONOTIFY
 #define ADV_DURATION 15
-//define REQUIRE_TWO_PRPH
+#define REQUIRE_TWO_PRPH
 #define CONNECT_TIMEOUT 3
 
 #ifdef REQUIRE_TWO_PRPH
@@ -430,11 +430,11 @@ void ConnectPrphTask_ALL(void *pvParameters)
   while (true)
   {
     ConnectPrph(0);
-    delay(100);
+    delay(200);
     ConnectPrph(1);
-    delay(100);
+    delay(200);
     ConnectPrph(2);
-    delay(500);
+    delay(200);
   }
   vTaskDelete(NULL);
 }
